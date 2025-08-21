@@ -29,6 +29,7 @@ enum {
 static char *target_names[] = {
 	"Exynos8890",//TARGET_8890
 	"Exynos8895",//TARGET_8895
+	"Exynos7870",//TARGET_7870
 };
 enum {
 	XFER_BUFFER = 0,//address of buffer where payload is written
@@ -38,6 +39,7 @@ static uint32_t targets[][2] = {
 	//XFER_BUFFER,	RA_PTR
 	{0x02021800,	0x02020F08},//TARGET_8890
 	{0x02021800,	0x02020F18},//TARGET_8895
+	{0x02021800,	0x02020F08},//TARGET_7870
 };
 
 libusb_device_handle *handle = NULL;
