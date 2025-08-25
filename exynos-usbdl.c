@@ -426,11 +426,12 @@ int main(int argc, char *argv[])
 	#endif
 
 	handle = libusb_open_device_with_vid_pid(NULL, VENDOR_ID, PRODUCT_ID);
-	if (!handle) {
-		fprintf(stderr, "Error: cannot open device %04x:%04x\n", VENDOR_ID, PRODUCT_ID);
-		libusb_exit (NULL);
-		return EXIT_FAILURE;
+	printf("Finding device...");
+	fflush(stdout);
+	while (!handle) {
+		handle = libusb_open_device_with_vid_pid(NULL, VENDOR_ID, PRODUCT_ID);
 	}
+	printf("found\n");
 
 	rc = libusb_claim_interface(handle, 0);
 	if(rc) {
