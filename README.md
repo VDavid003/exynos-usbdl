@@ -41,6 +41,7 @@ With this, they did close the possibility of using this on their existing device
 *: These SoCs should probably be vulnerable to this exploit, but they are not implemented due to the old exploit existing, and the lack of a device to test on.
 
 ## Credits:
+- [Chimera Tool](https://chimeratool.com): First discovery of the exploit circa 2021-2022. They provide the most advanced Exynos servicing capabilities in the market to a broad amount of devices, and that is thanks to this specific exploit, and many more.
 - [Christopher Wade](https://github.com/Iskuri): For discovering the vulnerability a year before us
 - [halal-beef](https://github.com/halal-beef), and [all the people credited](https://github.com/halal-beef/houston-pub?tab=readme-ov-file#credits) in [his tool](https://github.com/halal-beef/houston-pub): For telling me about this being used in the wild, sending me USB packet dumps, and thus pointing me into the right direction in my existing journey of reverse-engineering Exynos bootrom and trying to find just a vulnerability like this. For writing their own tools, testing on their devices, and providing tons of help and useful info.
 - Me, [VDavid003](https://github.com/vdavid003): For putting this tool together (well, extending it), and reverse-engineering most of the Exynos bootrom USB stack.
