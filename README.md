@@ -34,6 +34,7 @@ With this, they did close the possibility of using this on their existing device
 | Exynos7870 | ✅ | ✅ |
 | Exynos7885 | ❌ | ✅ |
 | Exynos9610(=9611=9609) | ❌ | ✅ |
+| Exynos9810 | ❌ | ✅ |
 | Exynos9830(=990) | ❌ | ✅ |
 | Exynos3830(=850) | ❌ | ✅ |
 

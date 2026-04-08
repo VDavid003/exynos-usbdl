@@ -95,6 +95,14 @@ static target_data targets[] = {
 		{0x02021800,	0x280},
 	},
 	{
+		.name = "Exynos9810",
+		.supports_zero_length_bulk_exploit = false,
+		.supports_get_configuration_exploit = true,
+		//XFER_BUFFER,	RA_PTR
+		{0x0, 0x0},
+		{0x02021800,	0x280},
+	},
+	{
 		.name = "Exynos9830",
 		.supports_zero_length_bulk_exploit = false,
 		.supports_get_configuration_exploit = true,
