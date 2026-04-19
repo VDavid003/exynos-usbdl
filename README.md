@@ -11,7 +11,7 @@ The original version of the tool exploits a [vulnerability](https://fredericb.in
 This fork can also exploit a new vulnerability to do just the same thing.
 
 ## How it (the new exploit) works:
-Certain USB CONTROL requests have no legth checks in the Exynos bootrom's EUB/EDL/USB-Boot mode, and also they allow reads on requests that should be write-only, and writes on requests that should be read-only.
+Certain USB CONTROL requests have no length checks in the Exynos bootrom's EUB/EDL/USB-Boot mode, and also they allow reads on requests that should be write-only, and writes on requests that should be read-only.
 
 Using this to our advantage, we can send USB CONTROL requests (not all work, as some have length checks, and some are not implemented depending on SoC, but GET_CONFIGURATION works on almost every SoC (maybe even all)) with higher than expected length to read/write into IRAM variables that we were never supposed to access. One of these variables happens to be a pointer to the current EP0 XferComplete handler function, which we can overwrite to gain ACE (for example, by pointing it to a not yet finished BL1 upload, that actually contains our payload)
 
