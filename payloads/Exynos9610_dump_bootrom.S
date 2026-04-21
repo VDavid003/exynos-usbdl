@@ -6,7 +6,7 @@
 _start:
     //set pshold
     mov     x0, #0x330c
-    movk    x0, #0x11c8, lsl #16
+    movk    x0, #0x1186, lsl #16
     mov     w1, #0x5300
     str     w1, [x0]
 
