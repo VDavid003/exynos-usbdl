@@ -41,55 +41,38 @@ With this, they did close the possibility of using this on their existing device
 
 *: These SoCs should probably be vulnerable to this exploit, but they are not implemented due to the old exploit existing, and the lack of a device to test on.
 
-## Credits:
-- [Chimera Tool](https://chimeratool.com): First discovery of the exploit circa 2021-2022. They provide the most advanced Exynos servicing capabilities in the market to a broad amount of devices, and that is thanks to this specific exploit, and many more.
-- [Christopher Wade](https://github.com/Iskuri): For discovering the vulnerability a year before us
-- [halal-beef](https://github.com/halal-beef), and [all the people credited](https://github.com/halal-beef/houston-pub?tab=readme-ov-file#credits) in [his tool](https://github.com/halal-beef/houston-pub): For telling me about this being used in the wild, sending me USB packet dumps, and thus pointing me into the right direction in my existing journey of reverse-engineering Exynos bootrom and trying to find just a vulnerability like this. For writing their own tools, testing on their devices, and providing tons of help and useful info.
-- Me, [VDavid003](https://github.com/vdavid003): For putting this tool together (well, extending it), and reverse-engineering most of the Exynos bootrom USB stack.
-
-# The rest of this README is not finished!
-So here, have the original README until I write some more documentation! Or maybe you can help in and write it instead of me!
-
-# [exynos-usbdl](https://github.com/frederic/exynos-usbdl) : unsigned code loader for Exynos bootrom
-
-## Disclaimer
-You will be solely responsible for any damage caused to your hardware/software/warranty/data/cat/etc...
-
-## Description
-Exynos bootrom supports booting from USB. This method of boot requires an USB host to send a signed bootloader to the bootrom via USB port.
-
-This tool exploits a [vulnerability](https://fredericb.info/2020/06/exynos-usbdl-unsigned-code-loader-for-exynos-bootrom.html) in the USB download mode to load and run unsigned code in Secure World.
-
-## Supported targets
-* Exynos 8890
-* Exynos 8895
-
 ## Access to USB download mode
-Among all the booting methods supported by this chipset, two are configured in fuses to be attempted on cold boot.
+Among all the booting methods supported by Exynos, two are configured in fuses and boot select ("OM") pins to be attempted on cold boot.
 If the first boot method fails (including failed authentication), then second boot method is attempted.
 
-On retail smartphones, the usual boot configuration is internal storage (UFS chip) first, then USB download mode as fallback.
+On retail smartphones, the usual boot configuration is internal storage (UFS chip/eMMC) first, then USB download mode as fallback.
 This means **USB download mode is only accessible if first boot method has failed**.
 
 First boot method sabotage can be achieved either through software or hardware modification.
-The approach used for this project was to dig a hole in UFS chip with dental scraper.
-
-For Exynos 8890, @astarasikov shared a better approach to corrupt bootloader without opening the device : from Download mode, flash *cm.bin* (from a firmware image) onto *BOOTLOADER* partition using [Heimdall tool](https://gitlab.com/BenjaminDobell/Heimdall). Please keep in mind that it will brick your device until you restore the *BOOTLOADER* partition.
-
-Once the first boot method fails, USB download mode can be accessed by pressing and holding power button.
+You can often flash other signed binaries in the BOOTLOADER partition using [Heimdall tool](https://gitlab.com/BenjaminDobell/Heimdall). This will brick the device until the BOOTLOADER partition is restored.
+On some devices, there are known boot select test points (or similar things, like a blob of solder on A8 2018) on the motherboard which can be used to temporatily boot into USB download mode.
+Technically destroying the eMMC/UFS chip also works, but that is *not* recommended.
 
 ## Usage
 ```
 ./exynos-usbdl <mode> <input_file> [<output_file>]
 	mode: mode of operation
 		n: normal
-		e: exploit
+		e: exploit (old zero-length bulk transfer exploit)
+		e2: new exploit (GET_CONFIGURATION)
 	input_file: payload binary to load and execute
-	output_file: file to write data returned by payload (exploit mode only)
+	output_file: file to write data returned by payload
 ```
 
 ## Payloads
 Payloads are raw binary AArch64 executables. Some are provided in directory **payloads/**.
+
+## Credits:
+- [Chimera Tool](https://chimeratool.com): First discovery of the exploit circa 2021-2022. They provide the most advanced Exynos servicing capabilities in the market to a broad amount of devices, and that is thanks to this specific exploit, and many more.
+- [Christopher Wade](https://github.com/Iskuri): For discovering the vulnerability a year before us.
+- [halal-beef](https://github.com/halal-beef), and [all the people credited](https://github.com/halal-beef/houston-pub?tab=readme-ov-file#credits) in [his tool](https://github.com/halal-beef/houston-pub): For telling me about this being used in the wild, sending me USB packet dumps, and thus pointing me into the right direction in my existing journey of reverse-engineering Exynos bootrom and trying to find just a vulnerability like this. For writing their own tools, testing on their devices, and providing tons of help and useful info.
+- Me, [VDavid003](https://github.com/vdavid003): For putting this tool together (well, extending it), and reverse-engineering most of the Exynos bootrom USB stack.
+- [Frédéric](https://github.com/frederic/): For the original tool using the old exploit.
 
 ## License
 Please see [LICENSE](/LICENSE).

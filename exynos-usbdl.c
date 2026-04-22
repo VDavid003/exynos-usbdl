@@ -379,9 +379,10 @@ int main(int argc, char *argv[])
 		printf("Usage: %s <mode> <input_file> [<output_file>]\n", argv[0]);
 		printf("\tmode: mode of operation\n");
 		printf("\t\tn: normal\n");
-		printf("\t\te: exploit\n");
+		printf("\t\te: exploit (old zero-length bulk transfer exploit)\n");
+		printf("\t\te2: new exploit (GET_CONFIGURATION)\n");
 		printf("\tinput_file: payload binary to load and execute\n");
-		printf("\toutput_file: file to write data returned by payload (exploit mode only)\n");
+		printf("\toutput_file: file to write data returned by payload\n");
 		return EXIT_SUCCESS;
 	}
 
