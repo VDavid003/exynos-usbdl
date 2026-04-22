@@ -40,7 +40,3 @@ _start:
     sub x30, x30, #4
     //return to the modified address
     ret
-
-.align 4
-key:
-.include "inc/sha256key.S"
