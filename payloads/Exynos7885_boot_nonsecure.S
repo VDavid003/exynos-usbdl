@@ -36,6 +36,12 @@ _start:
     mov x0, #0
     str x0, [sp, #0x8]
 
+    //clear cache
+    dsb sy
+    ic iallu
+    dsb sy
+    isb
+
     //re-run load bl1 from usb function by going back one instruction
     sub x30, x30, #4
     //return to the modified address
